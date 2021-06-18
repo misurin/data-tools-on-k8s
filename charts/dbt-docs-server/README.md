@@ -24,6 +24,6 @@ Use `values-example.yaml` for quick start, update the values arcordingly.
 
 Usage:
 ```
-NS=dbt
-helm -n $NS upgrade --install . -f values-sample.yaml
+helm repo add data-tools-on-k8s https://misurin.github.io/data-tools-on-k8s/
+helm upgrade --install data-tools-on-k8s/dbt-docs-server -f updated-values-sample.yaml
 ```
