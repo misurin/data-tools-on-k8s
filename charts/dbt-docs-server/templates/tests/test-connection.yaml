@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: "{{ include "dbt-docs.fullname" . }}-test-connection"
+  name: "{{ include "dbt-docs-server.fullname" . }}-test-connection"
   labels:
-    {{- include "dbt-docs.labels" . | nindent 4 }}
+    {{- include "dbt-docs-server.labels" . | nindent 4 }}
   annotations:
     "helm.sh/hook": test-success
 spec:
@@ -11,5 +11,5 @@ spec:
     - name: wget
       image: busybox
       command: ['wget']
-      args: ['{{ include "dbt-docs.fullname" . }}:{{ .Values.service.port }}']
+      args: ['{{ include "dbt-docs-server.fullname" . }}:{{ .Values.service.port }}']
   restartPolicy: Never
