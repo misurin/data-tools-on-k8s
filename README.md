@@ -1,4 +1,8 @@
 # Data tools Helm charts
 
-Chart list:
- - dbt-docs-server
+
+## Quickstart
+
+```
+helm repo add data-tools-on-k8s https://misurin.github.io/data-tools-on-k8s/
+```
