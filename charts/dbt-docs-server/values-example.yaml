@@ -1,0 +1,56 @@
+dbt:
+  image:
+    tag: 0.19.1
+    pullPolicy: IfNotPresent
+  imagePullSecrets: []  
+
+  profilesSecretName: production-dbt-profiles
+  profilesSecretKey: profiles.yml
+  profileName: production
+
+  docsSync:
+    intervalSeconds: 30
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 512Mi
+  docsServe:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 1
+        memory: 512Mi
+
+
+gitSync:
+  repoName: my-dbt-project
+  repoUrl: "git@github.com:<my-github-account>/my-dbt-project.git"
+  branch: master
+  sshPkSecretName: "my-dbt-project-github-deploy-key"
+  sshPkSecretKey: "my-dbt-project"
+
+livenessProbe:
+  initialDelaySeconds: 240
+  periodSeconds: 30
+readinessProbe:
+  initialDelaySeconds: 240
+  periodSeconds: 30
+
+ingress:
+  enabled: true
+  annotations:
+    kubernetes.io/ingress.class: "nginx-internal"
+    cert-manager.io/cluster-issuer: "letsencrypt"
+  hosts:
+    - host: my-dbt-project.mycompany.com
+      paths:
+        - /
+  tls:
+    - secretName: dbt-docs-server-tls
+      hosts:
+        - my-dbt-project.mycompany.com

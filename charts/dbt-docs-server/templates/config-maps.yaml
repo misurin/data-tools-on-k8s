@@ -1,0 +1,95 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "dbt-docs-server.fullname" . }}-scripts
+  labels:
+    {{- include "dbt-docs-server.labels" . | nindent 4 }}
+data:
+  dbt-docs-serve.sh: |
+    #!/bin/sh -e
+    cd $DBT_PROJECT_DIR
+    dbt docs generate --profiles-dir $PROFILES_DIR --profile $PROFILE_NAME
+    dbt docs serve --profiles-dir $PROFILES_DIR --profile $PROFILE_NAME
+
+  dbt-docs-sync.sh: |
+    #!/bin/sh -e
+    echo "Start syncing dbt docs at repo dir $DBT_PROJECT_DIR with interval of $DBT_DOCS_SYNC_INTERVAL seconds "
+    cd $DBT_PROJECT_DIR
+    trap "exit 0" INT TERM
+    PARENT_DIR=$(dirname $DBT_PROJECT_DIR)
+    while true; do
+      PREV_REVISION=$(cat $PARENT_DIR/prev_revision)
+      CUR_REVISION=$(cat $PARENT_DIR/cur_revision)
+
+      echo "Prev git rev: $PREV_REVISION, current git rev $CUR_REVISION"
+      date
+
+      if [ -n "$PREV_REVISION" ] && [ -n "$CUR_REVISION" ] && [ "$PREV_REVISION" != "$CUR_REVISION" ]; then
+        echo "Dbt repo is updated, running docs re-generation now ..."
+        dbt docs generate --profiles-dir $PROFILES_DIR --profile $PROFILE_NAME
+      fi
+
+      sleep $DBT_DOCS_SYNC_INTERVAL;
+    done
+
+  git-clone.sh: |
+    #!/bin/sh -e
+    REPO=$GIT_SYNC_REPO
+    REF=$GIT_SYNC_BRANCH
+    DIR=$GIT_SYNC_DEST
+    DEPTH=$GIT_SYNC_DEPTH
+    PRIVATE_KEY=$GIT_SSH_KEY_FILE
+    REPO_HOST=$GIT_REPO_HOST
+    REPO_PORT=$GIT_REPO_PORT
+    mkdir -p ~/.ssh/
+    echo -e "Adding host $REPO_HOST:$REPO_PORT to known_hosts"
+    ssh-keyscan -p $REPO_PORT $REPO_HOST >> ~/.ssh/known_hosts
+    cp -rL /keys/$PRIVATE_KEY ~/.ssh/
+    chmod 600 ~/.ssh/*
+    echo -e "Host $REPO_HOST\n  Port $REPO_PORT\n  IdentityFile ~/.ssh/$PRIVATE_KEY" > ~/.ssh/config
+    git clone $REPO -b $REF --depth $DEPTH $DIR
+
+    # Creat the files so that other container will not have "File not found" errors
+    PARENT_DIR=$(dirname $DIR)
+    touch $PARENT_DIR/prev_revision
+    touch $PARENT_DIR/cur_revision
+    
+  git-sync.sh: |
+    #!/bin/sh -e
+    REPO=$GIT_SYNC_REPO
+    REF=$GIT_SYNC_BRANCH
+    DIR=$GIT_SYNC_DEST
+    DEPTH=$GIT_SYNC_DEPTH
+    PRIVATE_KEY=$GIT_SSH_KEY_FILE
+    SYNC_TIME=$GIT_SYNC_INTERVAL
+    REPO_HOST=$GIT_REPO_HOST
+    REPO_PORT=$GIT_REPO_PORT
+    PREV_REVISION=""
+    CUR_REVISION=""
+    mkdir -p ~/.ssh/
+    echo -e "Adding host $REPO_HOST:$REPO_PORT to known_hosts"
+    ssh-keyscan -p $REPO_PORT $REPO_HOST >> ~/.ssh/known_hosts
+    cp -rL /keys/$PRIVATE_KEY ~/.ssh/
+    chmod 600 ~/.ssh/*
+    echo -e "Host $REPO_HOST\n  Port $REPO_PORT\n  IdentityFile ~/.ssh/$PRIVATE_KEY" > ~/.ssh/config
+    if [ ! -d "$DIR" ]; then
+      git clone $REPO -b $REF --depth $DEPTH $DIR
+    fi
+    # to break the infinite loop when we receive SIGTERM
+    trap "exit 0" SIGTERM
+    cd $DIR
+    PARENT_DIR=$(dirname $DIR)
+    while true; do
+      git fetch --depth $DEPTH origin $REF;
+      git reset --hard origin/$REF;
+      git clean -fd;
+      date;
+
+      # uses git revision to notify dbt whether a doc regeneration is needed
+      PREV_REVISION=$CUR_REVISION
+      CUR_REVISION=$(git rev-parse --short HEAD)
+
+      echo $PREV_REVISION > $PARENT_DIR/prev_revision
+      echo $CUR_REVISION > $PARENT_DIR/cur_revision
+      sleep $SYNC_TIME;
+    done

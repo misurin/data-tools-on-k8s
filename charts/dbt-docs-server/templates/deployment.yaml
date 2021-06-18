@@ -1,0 +1,188 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "dbt-docs-server.fullname" . }}
+  labels:
+    {{- include "dbt-docs-server.labels" . | nindent 4 }}
+spec:
+  replicas: 1 # does not support multiple pods
+  selector:
+    matchLabels:
+      {{- include "dbt-docs-server.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "dbt-docs-server.selectorLabels" . | nindent 8 }}
+    spec:
+    {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+      serviceAccountName: {{ include "dbt-docs-server.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+
+      initContainers:
+        - name: git-clone
+          image: "{{ .Values.gitSync.image.repository }}:{{ .Values.gitSync.image.tag }}"
+          imagePullPolicy: {{ .Values.gitSync.image.pullPolicy }}
+          command:
+            - /tmp/scripts/git-clone.sh
+          env:
+            - name: GIT_SYNC_REPO
+              value: "{{ .Values.gitSync.repoUrl }}"
+            - name: GIT_SSH_KEY_FILE
+              value: "{{ .Values.gitSync.sshPkSecretKey }}"
+            - name: GIT_SYNC_DEST
+              value: "/tmp/repos/{{ .Values.gitSync.repoName }}"
+            - name: GIT_SYNC_BRANCH
+              value: "{{ .Values.gitSync.branch }}"
+            - name: GIT_SYNC_DEPTH
+              value: "1"
+            - name: GIT_REPO_HOST
+              value: "github.com"
+            - name: GIT_REPO_PORT
+              value: "22"
+          volumeMounts:
+            - name: scripts
+              mountPath: "/tmp/scripts"
+            - name: dbt-github-repo-deploy-key
+              mountPath: "/keys"
+            - name: dbt-git-repo
+              mountPath: "/tmp/repos"
+
+      containers:
+        - name: dbt-git-sync
+          image: "{{ .Values.gitSync.image.repository }}:{{ .Values.gitSync.image.tag }}"
+          imagePullPolicy: {{ .Values.gitSync.image.pullPolicy }}
+          resources: 
+            {{- toYaml .Values.gitSync.resources | nindent 12 }}
+          command:
+            - /tmp/scripts/git-sync.sh
+          env:
+            - name: GIT_SYNC_REPO
+              value: "{{ .Values.gitSync.repoUrl }}"
+            - name: GIT_SSH_KEY_FILE
+              value: "{{ .Values.gitSync.sshPkSecretKey }}"
+            - name: GIT_SYNC_DEST
+              value: "/tmp/repos/{{ .Values.gitSync.repoName }}"
+            - name: GIT_SYNC_BRANCH
+              value: "{{ .Values.gitSync.branch }}"
+            - name: GIT_SYNC_DEPTH
+              value: "1"
+            - name: GIT_SYNC_INTERVAL
+              value: "{{ .Values.gitSync.intervalSeconds }}"
+            - name: GIT_REPO_HOST
+              value: "github.com"
+            - name: GIT_REPO_PORT
+              value: "22"
+          volumeMounts:
+            - name: scripts
+              mountPath: "/tmp/scripts"
+            - name: dbt-github-repo-deploy-key
+              mountPath: "/keys"
+            - name: dbt-git-repo
+              mountPath: "/tmp/repos"
+
+        - name: dbt-docs-sync
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.dbt.image.repository }}:{{ .Values.dbt.image.tag }}"
+          imagePullPolicy: {{ .Values.dbt.image.pullPolicy }}
+          env:
+            - name: PROFILES_DIR
+              value: "/tmp/dbt-profiles"
+            - name: PROFILE_NAME
+              value: "{{ .Values.dbt.profileName }}"
+            - name: DBT_PROJECT_DIR
+              value: "/tmp/repos/{{ .Values.gitSync.repoName }}"
+            - name: DBT_DOCS_SYNC_INTERVAL
+              value: "{{ .Values.dbt.docsSync.intervalSeconds }}"
+            
+          command:
+            - /tmp/scripts/dbt-docs-sync.sh
+          resources:
+            {{- toYaml .Values.dbt.docsSync.resources | nindent 12 }}
+          
+          volumeMounts:
+            - name: scripts
+              mountPath: "/tmp/scripts"
+            - name: dbt-git-repo
+              mountPath: "/tmp/repos"
+            - name: dbt-profiles
+              mountPath: "/tmp/dbt-profiles"
+
+
+        - name: dbt-docs-serve
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.dbt.image.repository }}:{{ .Values.dbt.image.tag }}"
+          imagePullPolicy: {{ .Values.dbt.image.pullPolicy }}
+          env:
+            - name: PROFILES_DIR
+              value: "/tmp/dbt-profiles"
+            - name: PROFILE_NAME
+              value: "{{ .Values.dbt.profileName }}"
+            - name: DBT_PROJECT_DIR
+              value: "/tmp/repos/{{ .Values.gitSync.repoName }}"
+          command:
+            - /tmp/scripts/dbt-docs-serve.sh
+          ports:
+            - name: dbt-doc
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            tcpSocket:
+              port: dbt-doc
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+            successThreshold: {{ .Values.livenessProbe.successThreshold }}
+            failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+          readinessProbe:
+            tcpSocket:
+              port: dbt-doc
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+            successThreshold: {{ .Values.livenessProbe.successThreshold }}
+            failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+          resources:
+            {{- toYaml .Values.dbt.docsServe.resources | nindent 12 }}
+          
+          volumeMounts:
+            - name: scripts
+              mountPath: "/tmp/scripts"
+            - name: dbt-git-repo
+              mountPath: "/tmp/repos"
+            - name: dbt-profiles
+              mountPath: "/tmp/dbt-profiles"
+
+
+      volumes:
+        - name: dbt-git-repo
+          emptyDir: {}
+        - name: dbt-github-repo-deploy-key
+          secret:
+            secretName: "{{ .Values.gitSync.sshPkSecretName }}"
+        - name: scripts
+          configMap:
+            name: {{ include "dbt-docs-server.fullname" . }}-scripts
+            defaultMode: 0755
+
+        - name: dbt-profiles
+          secret:
+            secretName: "{{ .Values.dbt.profilesSecretName }}"
+
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
