@@ -1,4 +1,4 @@
-# dbt-docs-server-helm-chart
+# cmak-helm-chart
 
 CMAK - Cluster Manager for Apache Kafka,
 
