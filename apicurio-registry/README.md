@@ -1,6 +1,6 @@
 # apicurio-registry-helm-chart
 
-Apicurio Registry - [Cluster Manager for Apache Kafka,](https://www.apicur.io/registry/)
+Apicurio Registry - [High performance, runtime registry for API Designs and Schemas](https://www.apicur.io/registry/)
 
 ## Introduction
 
