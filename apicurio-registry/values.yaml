@@ -4,7 +4,7 @@
 
 config:
   registryDataSource:
-    url: ""
+    url: "" # JDBC Connection String Format -> jdbc:postgresql://host:port/database
     existingSecret: "registry-datasource-credential"
     existingSecretUserNameKey: "username"
     existingSecretPasswordKey: "password"
