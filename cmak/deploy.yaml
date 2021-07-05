@@ -1,0 +1,44 @@
+# Default values for cmak.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+config:
+  cmak:
+    brokerViewThreadPoolSize: 6
+    brokerViewMaxQueueSize: 100
+    brokerViewUpdateSeconds: 30
+    offsetCacheThreadPoolSize: 10
+    offsetCacheMaxQueueSize: 1000
+    kafkaAdminClientThreadPoolSize: 10
+  features:
+    - "KMClusterManagerFeature"
+    - "KMTopicManagerFeature"
+    - "KMPreferredReplicaElectionFeature"
+    - "KMReassignPartitionsFeature"
+
+
+zookeeper:
+  enabled: true
+  replicaCount: 1
+  persistence:
+    enabled: true
+    # storageClass: "-"
+    accessModes:
+      - ReadWriteOnce
+    size: 5Gi
+    dataLogDir:
+      size: 5Gi
+
+
+ingress:
+  enabled: true
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+    kubernetes.io/ingress.class: nginx-internal
+  hosts:
+    - host: kafka-admin.shopback-data.com
+      paths: [ "/"]
+  tls:
+   - secretName: kafka-admin-tls
+     hosts:
+       - kafka-admin.shopback-data.com
